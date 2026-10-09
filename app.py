@@ -14,34 +14,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------------------------------------------------
-# Custom CSS for Video-Matched UI, Animations & Dynamic Theme
-# ---------------------------------------------------------
+# Custom CSS
 st.markdown("""
 <style>
-    /* Direction and Font */
     html, body, [class*="css"] {
         direction: rtl;
         text-align: right;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-
-    /* Keyframe Animations */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(12px); }
         to { opacity: 1; transform: translateY(0); }
     }
-
     @keyframes pulseGlow {
         0% { box-shadow: 0 0 10px rgba(107, 17, 176, 0.4); }
         50% { box-shadow: 0 0 22px rgba(168, 85, 247, 0.8); }
         100% { box-shadow: 0 0 10px rgba(107, 17, 176, 0.4); }
     }
-
-    .stAppViewContainer {
-        animation: fadeIn 0.6s ease-out;
-    }
-
+    .stAppViewContainer { animation: fadeIn 0.6s ease-out; }
     .sovereign-header {
         background: linear-gradient(135deg, #2b004a 0%, #150027 50%, #3b0764 100%);
         color: #facc15;
@@ -53,57 +43,14 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        backdrop-filter: blur(10px);
     }
-
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-        background-color: #0f172a;
-        padding: 10px;
-        border-radius: 14px;
-        border: 1px solid #1e293b;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 48px;
-        white-space: pre-wrap;
-        background-color: #1e293b;
-        border-radius: 10px;
-        color: #cbd5e1;
-        font-weight: bold;
-        padding: 0px 22px;
-        border: 1px solid #334155;
-        transition: all 0.3s ease-in-out;
-    }
-
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: #334155;
-        color: #ffffff;
-        transform: translateY(-2px);
-    }
-
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%) !important;
-        color: #ffffff !important;
-        border: 1px solid #f87171 !important;
-        box-shadow: 0px 4px 15px rgba(239, 68, 68, 0.5);
-    }
-
     .order-card {
         border: 2px solid #334155;
         border-radius: 16px;
         padding: 18px;
         background: linear-gradient(145deg, #1e293b, #0f172a);
         margin-bottom: 18px;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.3);
-        transition: transform 0.2s ease, border-color 0.2s ease;
     }
-
-    .order-card:hover {
-        transform: translateY(-4px);
-        border-color: #a855f7;
-    }
-
     .change-box {
         background: linear-gradient(90deg, #15803d 0%, #166534 100%);
         color: #ffffff;
@@ -112,36 +59,12 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
         margin: 12px 0;
-        box-shadow: 0px 2px 8px rgba(22, 101, 52, 0.4);
-    }
-
-    .stButton>button {
-        border-radius: 10px !important;
-        font-weight: bold !important;
-        transition: all 0.25s ease-in-out !important;
-    }
-
-    .stButton>button:hover {
-        transform: scale(1.02);
-        box-shadow: 0px 4px 14px rgba(255, 255, 255, 0.15);
-    }
-
-    .stButton>button[kind="primary"] {
-        background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%) !important;
-        border: none !important;
-    }
-
-    .stButton>button[kind="primary"]:hover {
-        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
-        box-shadow: 0px 4px 18px rgba(37, 99, 235, 0.5) !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Cookie Manager Initialization
 cookie_manager = stx.CookieManager()
 
-# Audio Bell Function for New Orders
 def trigger_notification_bell():
     bell_html = """
     <audio autoplay style="display:none;">
@@ -150,27 +73,18 @@ def trigger_notification_bell():
     """
     st.components.v1.html(bell_html, height=0)
 
-# ⏰ دالة فحص المواعيد وأيام عمل الكانتين (حساب الطالب فقط)
 def check_canteen_working_hours():
     now = datetime.now()
-    
-    # 1. التحقق من أيام العطلة (الجمعة = 4، السبت = 5)
     if now.weekday() in [4, 5]:
         return False, "الكانتين مغلق اليوم (عطلة نهاية الأسبوع: الجمعة والسبت) 🔴"
-    
-    # 2. التحقق من الوقت (من 8:00 صباحاً حتى 2:15 ظهراً)
     start_time = time(8, 0)
     end_time = time(14, 15)
     current_time = now.time()
-    
     if not (start_time <= current_time <= end_time):
         return False, f"الكانتين مغلق حالياً 🔴\nالوقت الحالي: {now.strftime('%I:%M %p')}\nمواعيد الطلب الرسمية للطلاب من 8:00 صباحاً حتى 2:15 ظهراً."
-        
     return True, "الكانتين مفتوح للطلب 🟢"
 
-# ---------------------------------------------------------
 # Supabase REST API Configuration
-# ---------------------------------------------------------
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
@@ -182,6 +96,8 @@ HEADERS = {
 }
 
 def db_get(table):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return pd.DataFrame()
     try:
         res = requests.get(f"{SUPABASE_URL}/rest/v1/{table}?select=*", headers=HEADERS, timeout=5)
         if res.status_code == 200:
@@ -191,6 +107,8 @@ def db_get(table):
     return pd.DataFrame()
 
 def db_insert(table, data):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
     try:
         res = requests.post(f"{SUPABASE_URL}/rest/v1/{table}", headers=HEADERS, json=data, timeout=5)
         return res.status_code in [200, 201]
@@ -198,25 +116,20 @@ def db_insert(table, data):
         return False
 
 def db_update(table, match_col, match_val, data):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False
     try:
         res = requests.patch(f"{SUPABASE_URL}/rest/v1/{table}?{match_col}=eq.{match_val}", headers=HEADERS, json=data, timeout=5)
         return res.status_code in [200, 204]
     except Exception:
         return False
 
-# ---------------------------------------------------------
-# Session Memory Initialization (تصفير كامل)
-# ---------------------------------------------------------
+# 🛑 تصفير كامل وبيضاء 100% للبيانات المحلية بدون أي منتجات قديمة
 if "demo_products" not in st.session_state:
-    st.session_state.demo_products = pd.DataFrame(columns=[
-        "id", "name", "category", "cost_price", "selling_price", "stock"
-    ])
+    st.session_state.demo_products = pd.DataFrame(columns=["id", "name", "category", "cost_price", "selling_price", "stock"])
 
 if "demo_sales" not in st.session_state:
-    st.session_state.demo_sales = pd.DataFrame(columns=[
-        "id", "student_name", "student_class", "items_str", "order_notes",
-        "total_price", "paid_amount", "profit", "status", "created_at"
-    ])
+    st.session_state.demo_sales = pd.DataFrame(columns=["id", "student_name", "student_class", "items_str", "order_notes", "total_price", "paid_amount", "profit", "status", "created_at"])
 
 if "cart_items" not in st.session_state:
     st.session_state.cart_items = []
@@ -227,9 +140,7 @@ if "system_locked" not in st.session_state:
 if "play_bell" not in st.session_state:
     st.session_state.play_bell = False
 
-# ---------------------------------------------------------
-# User Accounts Definition
-# ---------------------------------------------------------
+# الحسابات
 ACCOUNTS = {
     "oody": {"pass": "Mahmoud@2011", "role": "master", "name": "الملك الأعلى للنظام | MASTER OODY مرحباً بك يا 👑"},
     "admin": {"pass": "Dr.RagabBV842", "role": "admin", "name": "مدير النظام | Dr. Ragab"},
@@ -242,7 +153,6 @@ GUEST_DEMO_ACCOUNT = {
     "name": "زائر الديمو التجريبي 🎓"
 }
 
-# Persistent Auto-Login via Cookies
 saved_user = cookie_manager.get("auth_user")
 
 if "current_user" not in st.session_state:
@@ -256,14 +166,13 @@ if "current_user" not in st.session_state:
 user = st.session_state.current_user
 user_role = user["role"] if user else None
 
-# Helper Functions (فصل الديمو عن الداتابيز الحقيقية)
 def get_products():
     if user_role == "guest":
         return st.session_state.demo_products
     df = db_get("products")
     if not df.empty and "stock" in df.columns:
         return df
-    return pd.DataFrame(columns=["id", "name", "category", "cost_price", "selling_price", "stock"])
+    return st.session_state.demo_products
 
 def get_sales():
     if user_role == "guest":
@@ -271,10 +180,7 @@ def get_sales():
     df = db_get("sales")
     if not df.empty and "total_price" in df.columns:
         return df
-    return pd.DataFrame(columns=[
-        "id", "student_name", "student_class", "items_str", "order_notes",
-        "total_price", "paid_amount", "profit", "status", "created_at"
-    ])
+    return st.session_state.demo_sales
 
 def check_system_lock():
     if user_role == "guest":
@@ -295,19 +201,15 @@ if st.session_state.play_bell:
     trigger_notification_bell()
     st.session_state.play_bell = False
 
-# ---------------------------------------------------------
-# 1. Login Screen
-# ---------------------------------------------------------
+# شاشة تسجيل الدخول
 if st.session_state.current_user is None:
     st.title("🍔 نظام الكانتين الذكي - تسجيل الدخول")
     st.divider()
-    
     col_a, col_b, col_c = st.columns([1, 2, 1])
     with col_b:
         u_name = st.text_input("اسم المستخدم (Username):")
         u_pass = st.text_input("كلمة المرور (Password):", type="password")
         remember_me = st.checkbox("تذكرني على هذا الجهاز 💾", value=True)
-        
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("🔑 تسجيل الدخول", type="primary", use_container_width=True):
@@ -324,12 +226,9 @@ if st.session_state.current_user is None:
                 if remember_me:
                     cookie_manager.set("auth_user", "guest", key="set_guest_cookie")
                 st.rerun()
-                
     st.stop()
 
-# ---------------------------------------------------------
-# Header & Master Dashboard Info
-# ---------------------------------------------------------
+# Header
 col_header, col_logout = st.columns([5, 1])
 with col_header:
     st.markdown(f"<div class='sovereign-header'><h3>{user['name']}</h3></div>", unsafe_allow_html=True)
@@ -339,19 +238,12 @@ with col_logout:
         cookie_manager.delete("auth_user", key="delete_user_cookie")
         st.rerun()
 
-# --- Master Control Panel (MASTER OODY) ---
 if user_role == "master":
     st.markdown("### ⚡ لوحة التحكم المطلقة (Master Control)")
     c_status, c_switch = st.columns([2, 2])
-    
     is_locked = check_system_lock()
-    
     with c_status:
-        if is_locked:
-            st.error("حالة النظام الحالية: النظام متوقف بالكامل 🔴")
-        else:
-            st.success("حالة النظام الحالية: يعمل بالكامل 🟢")
-            
+        st.error("حالة النظام الحالية: النظام متوقف بالكامل 🔴") if is_locked else st.success("حالة النظام الحالية: يعمل بالكامل 🟢")
     with c_switch:
         if is_locked:
             if st.button("🔓 إيقاف قفل النظام (تشغيل)", type="primary", use_container_width=True):
@@ -365,13 +257,12 @@ if user_role == "master":
 st.divider()
 st.title("🍔 Bright Vision - نظام الكانتين الذكي")
 
-# 🔴 1. فحص القفل الطارئ المباشر للنظام (يستثنى منه الماستر والديمو)
 if check_system_lock() and user_role not in ["master", "guest"]:
     st.error("🔒 النظام مغلق حالياً بقرار من إدارة المدرسة.")
     st.warning("الرجاء التواصل مع الإدارة لإعادة التفعيل.")
     st.stop()
 
-# 🔴 2. القفل الفوري والمباشر لحساب الطالب الرسمي فقط خارج المواعيد (حساب الديمو غير مقيد)
+# تقييد المواعيد للطالب الحقيقي فقط (الديمو غير مقيد شغال 24/7)
 if user_role == "student":
     is_open, open_msg = check_canteen_working_hours()
     if not is_open:
@@ -379,9 +270,7 @@ if user_role == "student":
         st.info("💡 يمكن للطلاب تقديم الطلبات فقط خلال مواعيد العمل الرسمية (من 8:00 صباحاً حتى 2:15 ظهراً - من الأحد إلى الخميس).")
         st.stop()
 
-# ---------------------------------------------------------
-# Main Navigation Tabs Layout
-# ---------------------------------------------------------
+# Tabs
 if user_role in ["master", "admin"]:
     tabs = st.tabs(["تسجيل طلب جديد 🛒", "الأوردرات 👨‍🍳", "إدارة المنتجات ⚙️", "المبيعات والتقارير 📊"])
     tab_sales, tab_orders, tab_products, tab_reports = tabs[0], tabs[1], tabs[2], tabs[3]
@@ -393,21 +282,20 @@ elif user_role == "guest":
     tabs = st.tabs(["تسجيل طلب جديد 🛒 (تجريبي)", "الأوردرات 👨‍🍳 (تجريبي)", "إدارة المنتجات ⚙️ (تجريبي)"])
     tab_sales, tab_orders, tab_products = tabs[0], tabs[1], tabs[2]
     tab_reports = None
-else:  # Student
+else:
     tabs = st.tabs(["تسجيل طلب جديد 🛒"])
     tab_sales = tabs[0]
     tab_orders, tab_products, tab_reports = None, None, None
 
-# --- TAB: NEW ORDER (شاشة الطلب للطلاب والديمو) ---
+# TAB: SALES / NEW ORDER
 if tab_sales is not None:
     with tab_sales:
         st.subheader("🛒 قائمة الطلبات المتاحة")
-        
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            student_name = st.text_input("اسم الطالب: (مثال: محمود مصطفى)", placeholder="محمود مصطفى", key="std_name_input")
+            student_name = st.text_input("اسم الطالب:", placeholder="محمود مصطفى", key="std_name_input")
         with col_s2:
-            student_class = st.text_input("الفصل الدراسي: (مثال: 10-A)", placeholder="10-A", key="std_class_input")
+            student_class = st.text_input("الفصل الدراسي:", placeholder="10-A", key="std_class_input")
             
         prods = get_products()
         if prods.empty or "stock" not in prods.columns or len(prods) == 0:
@@ -431,7 +319,6 @@ if tab_sales is not None:
             
             st.markdown("---")
             st.subheader("🛒 سلة الطلبات الحالية")
-            
             if not st.session_state.cart_items:
                 st.info("السلة فارغة حالياً. قم بإضافة أصناف من الأعلى.")
             else:
@@ -441,9 +328,8 @@ if tab_sales is not None:
                     total_sum += float(item['selling_price'])
                 
                 st.markdown(f"### **الإجمالي: <span style='color:#00ff66;'>{total_sum:.0f} ج.م</span>**", unsafe_allow_html=True)
-                
                 paid_amount = st.number_input("المبلغ المدفوع (معاك كام؟):", min_value=0.0, step=5.0, value=total_sum)
-                order_notes = st.text_area("📝 ملاحظات إضافية على الطلب (اختياري):", placeholder="مثال: من غير كاتشب / العيش محمص / بدون مخلل...", key="std_order_notes")
+                order_notes = st.text_area("📝 ملاحظات إضافية على الطلب (اختياري):", placeholder="مثال: من غير كاتشب / العيش محمص...", key="std_order_notes")
 
                 col_btn_del1, col_btn_del2 = st.columns(2)
                 with col_btn_del1:
@@ -485,7 +371,7 @@ if tab_sales is not None:
                         st.success("🔔 تم إرسال طلبك بنجاح!")
                         st.rerun()
 
-# --- TAB: KITCHEN / CANTEEN ORDERS (شاشة المطبخ والطلبات) ---
+# TAB: KITCHEN / CANTEEN ORDERS
 if tab_orders is not None:
     with tab_orders:
         st.subheader("👨‍🍳 شاشة المطبخ والطلبات")
@@ -525,7 +411,7 @@ if tab_orders is not None:
                         st.success("تم إتمام الطلب!")
                         st.rerun()
 
-# --- TAB: PRODUCTS MANAGEMENT ---
+# TAB: PRODUCTS MANAGEMENT
 if tab_products is not None:
     with tab_products:
         st.subheader("⚙ إضافة منتج جديد للمنيو")
@@ -559,7 +445,7 @@ if tab_products is not None:
         st.subheader("📋 قائمة المنتجات والمخزون الحالي")
         st.dataframe(get_products(), use_container_width=True)
 
-# --- TAB: REPORTS & ANALYTICS ---
+# TAB: REPORTS & ANALYTICS
 if tab_reports is not None:
     with tab_reports:
         st.subheader("📊 إحصائيات وتقارير المبيعات المحفوظة")
@@ -569,10 +455,7 @@ if tab_reports is not None:
                 st.warning("تنبيه: مسح الإحصائيات سيقوم بتصفير كافة المبيعات والتقارير الحالية!")
                 if st.button("🔄 إعادة ضبط وتصفير جميع الإحصائيات", type="primary", use_container_width=True):
                     if user_role == "guest":
-                        st.session_state.demo_sales = pd.DataFrame(columns=[
-                            "id", "student_name", "student_class", "items_str", "order_notes",
-                            "total_price", "paid_amount", "profit", "status", "created_at"
-                        ])
+                        st.session_state.demo_sales = pd.DataFrame(columns=["id", "student_name", "student_class", "items_str", "order_notes", "total_price", "paid_amount", "profit", "status", "created_at"])
                     else:
                         try:
                             requests.delete(f"{SUPABASE_URL}/rest/v1/sales?id=gt.0", headers=HEADERS)
@@ -583,7 +466,6 @@ if tab_reports is not None:
             st.markdown("---")
 
         sales_df = get_sales()
-        
         if sales_df.empty:
             st.info("لا توجد مبيعات مسجلة حتى الآن.")
         else:
@@ -591,11 +473,9 @@ if tab_reports is not None:
             m1.metric("إجمالي المبيعات", f"{sales_df['total_price'].sum():.2f} ج.م")
             m2.metric("إجمالي الأرباح", f"{sales_df['profit'].sum():.2f} ج.م")
             m3.metric("عدد العمليات", f"{len(sales_df)}")
-            
             st.divider()
             if "product_name" in sales_df.columns:
                 fig = px.bar(sales_df, x="product_name", y="total_price", color="product_name", title="📈 توزيع المبيعات حسب المنتج")
                 st.plotly_chart(fig, use_container_width=True)
-            
             st.subheader("📜 سجل العمليات التفصيلي")
             st.dataframe(sales_df, use_container_width=True)
