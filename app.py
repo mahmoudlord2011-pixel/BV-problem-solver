@@ -1,327 +1,582 @@
 import streamlit as st
 import pandas as pd
-import random
-from supabase import create_client, Client
-
-# ضبط إعدادات الصفحة
-st.set_page_config(page_title="صوت المدرسة - School Voice", page_icon="🏫", layout="wide")
-
-# ---------------------------------------------------------
-# الاتصال بـ Supabase من خلال Secrets
-# ---------------------------------------------------------
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
-
-supabase = init_supabase()
+import requests
+import plotly.express as px
+from datetime import datetime, time
+import extra_streamlit_components as stx
 
 # ---------------------------------------------------------
-# 🛡️ فلتر الألفاظ الممنوعة والنصوص المسيئة
+# Page Configuration
 # ---------------------------------------------------------
-FORBIDDEN_WORDS = [
-    # يمكن إضافة أي كلمات غير لائقة هنا
-    "شتيمة", "احمق", "غبي", "كلب", "حمار", "زفت"
-]
-
-def contains_bad_words(text: str) -> bool:
-    """فحص إذا كان النص يحتوي على أي كلمة غير لائقة"""
-    text_lower = text.lower()
-    for word in FORBIDDEN_WORDS:
-        if word in text_lower:
-            return True
-    return False
+st.set_page_config(
+    page_title="Bright Vision - نظام الكانتين الذكي",
+    page_icon="🍔",
+    layout="wide"
+)
 
 # ---------------------------------------------------------
-# وظائف قراءة وتحديث قاعدة البيانات السحابية
+# Custom CSS for Video-Matched UI, Animations & Dynamic Theme
 # ---------------------------------------------------------
-def load_data(include_pending: bool = False):
-    """جلب البلاغات من السحابة (مع إمكانية تصفية البلاغات غير المعتمَدة)"""
-    if include_pending:
-        response = supabase.table("school_issues").select("*").execute()
-    else:
-        # للطلاب: عرض البلاغات المعتمدة فقط (تجاهل Pending)
-        response = supabase.table("school_issues").select("*").neq("status", "Pending").execute()
+st.markdown("""
+<style>
+    /* Direction and Font */
+    html, body, [class*="css"] {
+        direction: rtl;
+        text-align: right;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Keyframe Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulseGlow {
+        0% { box-shadow: 0 0 10px rgba(107, 17, 176, 0.4); }
+        50% { box-shadow: 0 0 22px rgba(168, 85, 247, 0.8); }
+        100% { box-shadow: 0 0 10px rgba(107, 17, 176, 0.4); }
+    }
+
+    .stAppViewContainer {
+        animation: fadeIn 0.6s ease-out;
+    }
+
+    .sovereign-header {
+        background: linear-gradient(135deg, #2b004a 0%, #150027 50%, #3b0764 100%);
+        color: #facc15;
+        padding: 18px 28px;
+        border-radius: 16px;
+        border: 2px solid #9333ea;
+        animation: pulseGlow 3s infinite alternate;
+        margin-bottom: 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: #0f172a;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid #1e293b;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 48px;
+        white-space: pre-wrap;
+        background-color: #1e293b;
+        border-radius: 10px;
+        color: #cbd5e1;
+        font-weight: bold;
+        padding: 0px 22px;
+        border: 1px solid #334155;
+        transition: all 0.3s ease-in-out;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #334155;
+        color: #ffffff;
+        transform: translateY(-2px);
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%) !important;
+        color: #ffffff !important;
+        border: 1px solid #f87171 !important;
+        box-shadow: 0px 4px 15px rgba(239, 68, 68, 0.5);
+    }
+
+    .order-card {
+        border: 2px solid #334155;
+        border-radius: 16px;
+        padding: 18px;
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        margin-bottom: 18px;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.3);
+        transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .order-card:hover {
+        transform: translateY(-4px);
+        border-color: #a855f7;
+    }
+
+    .change-box {
+        background: linear-gradient(90deg, #15803d 0%, #166534 100%);
+        color: #ffffff;
+        padding: 12px;
+        border-radius: 10px;
+        font-weight: bold;
+        text-align: center;
+        margin: 12px 0;
+        box-shadow: 0px 2px 8px rgba(22, 101, 52, 0.4);
+    }
+
+    .stButton>button {
+        border-radius: 10px !important;
+        font-weight: bold !important;
+        transition: all 0.25s ease-in-out !important;
+    }
+
+    .stButton>button:hover {
+        transform: scale(1.02);
+        box-shadow: 0px 4px 14px rgba(255, 255, 255, 0.15);
+    }
+
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%) !important;
+        border: none !important;
+    }
+
+    .stButton>button[kind="primary"]:hover {
+        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
+        box-shadow: 0px 4px 18px rgba(37, 99, 235, 0.5) !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Cookie Manager Initialization
+cookie_manager = stx.CookieManager()
+
+# Audio Bell Function for New Orders
+def trigger_notification_bell():
+    bell_html = """
+    <audio autoplay style="display:none;">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+    </audio>
+    """
+    st.components.v1.html(bell_html, height=0)
+
+# ⏰ دالة فحص المواعيد وأيام عمل الكانتين للطلاب والزوار
+def check_canteen_working_hours():
+    now = datetime.now()
+    
+    # 1. التحقق من أيام العطلة (الجمعة = 4، السبت = 5)
+    if now.weekday() in [4, 5]:
+        return False, "الكانتين مغلق اليوم (عطلة نهاية الأسبوع: الجمعة والسبت) 🔴"
+    
+    # 2. التحقق من الوقت (من 8:00 صباحاً حتى 2:15 ظهراً)
+    start_time = time(8, 0)
+    end_time = time(14, 15)
+    current_time = now.time()
+    
+    if not (start_time <= current_time <= end_time):
+        return False, f"الكانتين مغلق حالياً 🔴\nالوقت الحالي: {now.strftime('%I:%M %p')}\nمواعيد الطلب الرسمية للطلاب والزوار من 8:00 صباحاً حتى 2:15 ظهراً."
         
-    data = response.data
-    if data:
-        return pd.DataFrame(data)
-    return pd.DataFrame(columns=[
-        "ticket_id", "title", "description", "location", 
-        "priority", "is_anonymous", "student_name", 
-        "upvotes", "status", "admin_reply"
+    return True, "الكانتين مفتوح للطلب 🟢"
+
+# ---------------------------------------------------------
+# Supabase REST API Configuration
+# ---------------------------------------------------------
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+
+HEADERS = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": f"Bearer {SUPABASE_KEY}",
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+}
+
+def db_get(table):
+    try:
+        res = requests.get(f"{SUPABASE_URL}/rest/v1/{table}?select=*", headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            return pd.DataFrame(res.json())
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+def db_insert(table, data):
+    try:
+        res = requests.post(f"{SUPABASE_URL}/rest/v1/{table}", headers=HEADERS, json=data, timeout=5)
+        return res.status_code in [200, 201]
+    except Exception:
+        return False
+
+def db_update(table, match_col, match_val, data):
+    try:
+        res = requests.patch(f"{SUPABASE_URL}/rest/v1/{table}?{match_col}=eq.{match_val}", headers=HEADERS, json=data, timeout=5)
+        return res.status_code in [200, 204]
+    except Exception:
+        return False
+
+# ---------------------------------------------------------
+# Session Memory Initialization
+# ---------------------------------------------------------
+# 💥 تم تفريغ المنيو الافتراضي بالكامل
+if "demo_products" not in st.session_state:
+    st.session_state.demo_products = pd.DataFrame(columns=[
+        "id", "name", "category", "cost_price", "selling_price", "stock"
     ])
 
-def is_system_locked():
-    response = supabase.table("system_config").select("kill_switch").eq("id", 1).execute()
-    if response.data:
-        return response.data[0]["kill_switch"]
-    return False
+if "demo_sales" not in st.session_state:
+    st.session_state.demo_sales = pd.DataFrame(columns=[
+        "id", "student_name", "student_class", "items_str", "order_notes",
+        "total_price", "paid_amount", "profit", "status", "created_at"
+    ])
 
-def set_system_lock(status: bool):
-    supabase.table("system_config").update({"kill_switch": status}).eq("id", 1).execute()
+if "cart_items" not in st.session_state:
+    st.session_state.cart_items = []
 
-def reset_database():
-    supabase.table("school_issues").delete().neq("ticket_id", "NONE").execute()
+if "system_locked" not in st.session_state:
+    st.session_state.system_locked = False
+
+if "play_bell" not in st.session_state:
+    st.session_state.play_bell = False
+
+# Helper Functions
+def get_products():
+    df = db_get("products")
+    if not df.empty and "stock" in df.columns:
+        return df
+    return st.session_state.demo_products
+
+def get_sales():
+    df = db_get("sales")
+    if not df.empty and "total_price" in df.columns:
+        return df
+    return st.session_state.demo_sales
+
+def check_system_lock():
+    df = db_get("system_config")
+    if not df.empty and "key" in df.columns and "value" in df.columns:
+        row = df[df["key"] == "is_locked"]
+        if not row.empty:
+            return str(row.iloc[0]["value"]).lower() == "true"
+    return st.session_state.system_locked
+
+def toggle_system_lock(locked_state: bool):
+    st.session_state.system_locked = locked_state
+    db_update("system_config", "key", "is_locked", {"value": "true" if locked_state else "false"})
 
 # ---------------------------------------------------------
-# إدارة الجلسة والتسجيل (Session State)
+# User Accounts Definition
 # ---------------------------------------------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.user_role = None
-    st.session_state.username = None
+ACCOUNTS = {
+    "oody": {"pass": "Mahmoud@2011", "role": "master", "name": "الملك الأعلى للنظام | MASTER OODY مرحباً بك يا 👑"},
+    "admin": {"pass": "Dr.RagabBV842", "role": "admin", "name": "مدير النظام | Dr. Ragab"},
+    "canteen": {"pass": "canteen 842", "role": "canteen", "name": "حساب الكانتين والمطبخ 🍔"},
+    "student": {"pass": "student123", "role": "student", "name": "حساب الطلاب والزوار 🎓"}
+}
 
-# 🛑 فحص Kill Switch الشامل
-if is_system_locked():
-    if st.session_state.user_role != "master":
-        st.session_state.logged_in = False
-        st.session_state.user_role = None
-        st.session_state.username = None
+GUEST_DEMO_ACCOUNT = {
+    "role": "student",
+    "name": "زائر الديمو التجريبي 🎓"
+}
+
+# Persistent Auto-Login via Cookies
+saved_user = cookie_manager.get("auth_user")
+
+if "current_user" not in st.session_state:
+    if saved_user in ACCOUNTS:
+        st.session_state.current_user = ACCOUNTS[saved_user]
+    elif saved_user == "guest":
+        st.session_state.current_user = GUEST_DEMO_ACCOUNT
+    else:
+        st.session_state.current_user = None
+
+if st.session_state.play_bell:
+    trigger_notification_bell()
+    st.session_state.play_bell = False
+
+# ---------------------------------------------------------
+# 1. Login Screen
+# ---------------------------------------------------------
+if st.session_state.current_user is None:
+    st.title("🍔 نظام الكانتين الذكي - تسجيل الدخول")
+    st.divider()
+    
+    col_a, col_b, col_c = st.columns([1, 2, 1])
+    with col_b:
+        u_name = st.text_input("اسم المستخدم (Username):")
+        u_pass = st.text_input("كلمة المرور (Password):", type="password")
+        remember_me = st.checkbox("تذكرني على هذا الجهاز 💾", value=True)
         
-        st.error("⛔ النظام متوقف حالياً للصيانة أو بواسطة الإدارة العليا (Kill Switch Active).")
-        st.info("لا يمكن لأي طالب أو مدير الوصول للنظام في الوقت الحالي.")
-        st.write("---")
-        
-        with st.expander("👑 تسجيل دخول المالك الأعظم (Master Oody) للتحكم"):
-            master_user = st.text_input("Master Username:")
-            master_pass = st.text_input("Master Password:", type="password")
-            if st.button("فك الحظر وتشغيل النظام 🔓"):
-                if master_user == "oody" and master_pass == "Mahmoud@2011":
-                    set_system_lock(False)
-                    st.session_state.logged_in = True
-                    st.session_state.user_role = "master"
-                    st.session_state.username = "Master Oody 👑"
-                    st.success("تم إيقاف الـ Kill Switch وبدء تشغيل النظام!")
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("🔑 تسجيل الدخول", type="primary", use_container_width=True):
+                if u_name in ACCOUNTS and ACCOUNTS[u_name]["pass"] == u_pass:
+                    st.session_state.current_user = ACCOUNTS[u_name]
+                    if remember_me:
+                        cookie_manager.set("auth_user", u_name, key="set_user_cookie")
                     st.rerun()
                 else:
-                    st.error("بيانات الماستر غير صحيحة!")
-        st.stop()
-
-# شاشة تسجيل الدخول
-if not st.session_state.logged_in:
-    st.markdown("<h2 style='text-align: center; color: #1E88E5;'>🔐 تسجيل الدخول إلى نظام صوت المدرسة</h2>", unsafe_allow_html=True)
-    st.write("---")
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        username = st.text_input("اسم المستخدم (Username):")
-        password = st.text_input("كلمة السر (Password):", type="password")
-        login_btn = st.button("تسجيل الدخول 🚀", use_container_width=True)
-
-        if login_btn:
-            if username == "student" and password == "student123":
-                st.session_state.logged_in = True
-                st.session_state.user_role = "student"
-                st.session_state.username = "طالب / ولي أمر"
+                    st.error("❌ اسم المستخدم أو كلمة المرور غير صحيحة!")
+        with col_btn2:
+            if st.button("🚀 دخول سريع بنظام الديمو (Guest Demo)", use_container_width=True):
+                st.session_state.current_user = GUEST_DEMO_ACCOUNT
+                if remember_me:
+                    cookie_manager.set("auth_user", "guest", key="set_guest_cookie")
                 st.rerun()
-            elif username == "admin" and password == "Dr.RagabBV842":
-                st.session_state.logged_in = True
-                st.session_state.user_role = "admin"
-                st.session_state.username = "المدير (Dr. Ragab)"
-                st.rerun()
-            elif username == "oody" and password == "Mahmoud@2011":
-                st.session_state.logged_in = True
-                st.session_state.user_role = "master"
-                st.session_state.username = "Master Oody 👑"
-                st.rerun()
-            else:
-                st.error("اسم المستخدم أو كلمة السر غير صحيحة!")
+                
     st.stop()
 
 # ---------------------------------------------------------
-# القائمة الجانبية
+# Header & Master Dashboard Info
 # ---------------------------------------------------------
-st.sidebar.title(f"👤 {st.session_state.username}")
-st.sidebar.caption(f"الصلاحية: `{st.session_state.user_role.upper()}`")
+user = st.session_state.current_user
+user_role = user["role"]
 
-if st.sidebar.button("🚪 تسجيل الخروج"):
-    st.session_state.logged_in = False
-    st.session_state.user_role = None
-    st.session_state.username = None
-    st.rerun()
-
-st.sidebar.write("---")
-
-if st.session_state.user_role == "student":
-    available_pages = ["🏠 الصفحة الرئيسية والتقديم", "🔔 متابعة مشكلة برقم البلاغ", "🏆 ماذا تغير؟ (What Changed?)"]
-elif st.session_state.user_role == "admin":
-    available_pages = ["👨‍💼 لوحة تحكم المدير (Dashboard)", "🏆 ماذا تغير؟ (What Changed?)"]
-elif st.session_state.user_role == "master":
-    available_pages = ["⚡ Kill Switch Control Panel"]
-
-page = st.sidebar.radio("اختر الصفحة:", available_pages)
-
-# ---------------------------------------------------------
-# الصفحات
-# ---------------------------------------------------------
-if page == "🏠 الصفحة الرئيسية والتقديم":
-    st.markdown("<h1 style='text-align: center; color: #1E88E5;'>📣 صوتك ممكن يغيّر مدرستك</h1>", unsafe_allow_html=True)
-    st.write("---")
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.subheader("📝 تقديم مشكلة / اقتراح جديد")
-        with st.form("issue_form", clear_on_submit=True):
-            title = st.text_input("عنوان المشكلة / الاقتراح *")
-            description = st.text_area("شرح التفاصيل *")
-            location = st.text_input("مكان المشكلة 📍")
-            priority = st.selectbox("درجة الأهمية ⚠️", ["عادية", "مهمة", "عاجلة"])
-            anonymous = st.checkbox("🕶️ إخفاء الاسم")
-            student_name = "مجهول" if anonymous else st.text_input("اسمك (اختياري)", value="طالب/ولي أمر")
-
-            submitted = st.form_submit_button("إرسال البلاغ 🚀")
-
-            if submitted:
-                if not title or not description:
-                    st.error("يرجى ملء عنوان وشرح المشكلة!")
-                # 🛡️ تفعيل الفلترة التلقائية قبل الحفظ
-                elif contains_bad_words(title) or contains_bad_words(description):
-                    st.error("⚠️ عفواً، يحتوي البلاغ على كلمات غير لائقة تخالف القواعد. يرجى تعديل الصياغة.")
-                else:
-                    ticket_id = f"TCK-{random.randint(1000, 9999)}"
-                    new_issue = {
-                        "ticket_id": ticket_id,
-                        "title": title,
-                        "description": description,
-                        "location": location,
-                        "priority": priority,
-                        "is_anonymous": "نعم" if anonymous else "لا",
-                        "student_name": student_name,
-                        "upvotes": 1,
-                        "status": "Pending",  # 🛡️ تدخل مرحلة المراجعة أولاً قبل النشر
-                        "admin_reply": ""
-                    }
-                    supabase.table("school_issues").insert(new_issue).execute()
-                    st.success(f"تم إرسال بلاغك بنجاح! 🎉 رقم المتابعة: **{ticket_id}**")
-                    st.info("💡 ملاحظة: سيعرض البلاغ للطلاب بعد مراجعة الإدارة له.")
-
-    with col2:
-        st.subheader("🔥 المشاكل الأكثر دعماً")
-        df = load_data(include_pending=False) # عرض المعتمدة فقط
-        if not df.empty:
-            sorted_df = df.sort_values(by="upvotes", ascending=False)
-            for idx, row in sorted_df.head(5).iterrows():
-                with st.container():
-                    st.markdown(f"**{row['title']}** ({row['priority']})")
-                    st.caption(f"📍 المكان: {row['location']} | الحالة: `{row['status']}`")
-                    c1, c2 = st.columns([1, 1])
-                    c1.write(f"🔥 {row['upvotes']} دعم")
-                    if c2.button("دعم 👍", key=f"upvote_{row['ticket_id']}"):
-                        supabase.table("school_issues").update({"upvotes": int(row['upvotes']) + 1}).eq("ticket_id", row['ticket_id']).execute()
-                        st.rerun()
-                    st.divider()
-        else:
-            st.info("لا توجد مشاكل معتمدة حالياً.")
-
-elif page == "🔔 متابعة مشكلة برقم البلاغ":
-    st.title("🔔 متابعة حالة البلاغ")
-    search_id = st.text_input("أدخل رقم البلاغ (مثال: TCK-1001):")
-
-    if search_id:
-        df = load_data(include_pending=True) # الطالب يقدر يتابع بلاغه حتى لو Pending
-        if not df.empty:
-            issue = df[df['ticket_id'].astype(str).str.upper() == search_id.strip().upper()]
-            if not issue.empty:
-                row = issue.iloc[0]
-                st.subheader(f"📌 المشكلة: {row['title']}")
-                st.write(f"**الوصف:** {row['description']}")
-                st.write(f"**المكان:** {row['location']}")
-                
-                status = row['status']
-                st.markdown("### 📊 مسار حالة الطلب:")
-                if status == "Pending":
-                    st.warning("⏳ البلاغ حالياً قيد المراجعة بواسطة المدير.")
-                else:
-                    s1 = "✅" if status in ["New", "Reviewing", "In Progress", "Solved"] else "⚪"
-                    s2 = "👀" if status in ["Reviewing", "In Progress", "Solved"] else "⚪"
-                    s3 = "🔧" if status in ["In Progress", "Solved"] else "⚪"
-                    s4 = "🎉" if status == "Solved" else "⚪"
-
-                    st.write(f"{s1} **تم الاستلام** -> {s2} **مراجعة** -> {s3} **جاري الحل** -> {s4} **تم الحل**")
-
-                if pd.notna(row['admin_reply']) and str(row['admin_reply']).strip() != "":
-                    st.info(f"💬 **رد المدير:** {row['admin_reply']}")
-            else:
-                st.error("رقم البلاغ غير موجود!")
-        else:
-            st.error("لا توجد بلاغات حالياً.")
-
-elif page == "🏆 ماذا تغير؟ (What Changed?)":
-    st.title("🏆 What Changed?")
-    df = load_data(include_pending=False)
-    solved_count = len(df[df['status'] == 'Solved']) if not df.empty else 0
-    total_upvotes = int(df['upvotes'].sum()) if not df.empty else 0
-    
-    st.markdown("### 🎉 الإحصائيات الحالية:")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("تم إصلاحها", f"{solved_count} مشكلة ✅")
-    m2.metric("تم تنفيذها", "0 اقتراحات 💡")
-    m3.metric("الأصوات والدعم", f"{total_upvotes} صوت 👥")
-
-elif page == "👨‍💼 لوحة تحكم المدير (Dashboard)":
-    st.title("👨‍💼 لوحة تحكم المدير")
-    df = load_data(include_pending=True) # المدير يشوف كل حاجة بما فيها المعلقة
-    
-    if not df.empty:
-        # قسم البلاغات الجديدة المعلقة
-        pending_df = df[df['status'] == 'Pending']
-        if not pending_df.empty:
-            st.warning(f"📩 لديك ({len(pending_df)}) بلاغ جديد ينتظر المراجعة والموافقة!")
-            for idx, row in pending_df.iterrows():
-                with st.expander(f"🔍 بلاغ: {row['title']} (من: {row['student_name']})"):
-                    st.write(f"**الشرح:** {row['description']}")
-                    st.write(f"**المكان:** {row['location']} | **الأهمية:** {row['priority']}")
-                    col_acc, col_rej = st.columns(2)
-                    if col_acc.button("موافقة ونشر البلاغ ✅", key=f"app_{row['ticket_id']}"):
-                        supabase.table("school_issues").update({"status": "New"}).eq("ticket_id", row['ticket_id']).execute()
-                        st.success("تمت الموافقة بنجاح وأصبح البلاغ ظاهراً للجميع!")
-                        st.rerun()
-                    if col_rej.button("حذف البلاغ (مسيء/وهمي) 🗑️", key=f"del_{row['ticket_id']}"):
-                        supabase.table("school_issues").delete().eq("ticket_id", row['ticket_id']).execute()
-                        st.warning("تم حذف البلاغ المسيء!")
-                        st.rerun()
-            st.write("---")
-
-        st.subheader("📋 قائمة المشاكل المعتمدة (مرتبة بالأعلى دعماً)")
-        active_df = df[df['status'] != 'Pending'].sort_values(by="upvotes", ascending=False)
-        if not active_df.empty:
-            st.dataframe(active_df[["status", "upvotes", "title", "ticket_id"]], use_container_width=True)
-
-            selected_ticket = st.selectbox("اختر رقم البلاغ للتعديل:", active_df['ticket_id'].tolist())
-            if selected_ticket:
-                current_row = df[df['ticket_id'] == selected_ticket].iloc[0]
-                new_status = st.selectbox("تغيير الحالة:", ["New", "Reviewing", "In Progress", "Solved"], index=["New", "Reviewing", "In Progress", "Solved"].index(current_row['status']))
-                admin_reply = st.text_input("رد المدير للطالب:", value=str(current_row['admin_reply']) if pd.notna(current_row['admin_reply']) else "")
-
-                if st.button("حفظ التغييرات 💾"):
-                    supabase.table("school_issues").update({"status": new_status, "admin_reply": admin_reply}).eq("ticket_id", selected_ticket).execute()
-                    st.success("تم التحديث!")
-                    st.rerun()
-        else:
-            st.info("لا توجد مشاكل معتمدة حالياً.")
-    else:
-        st.info("لا توجد بلاغات بالسيستم.")
-
-elif page == "⚡ Kill Switch Control Panel":
-    st.title("👑 لوحة تحكم الماستر - أودي")
-    is_locked = is_system_locked()
-
-    if is_locked:
-        st.error("🔴 النظام حالياً: مُغلق بالكامل (OFFLINE).")
-        if st.button("🟢 تشغيل الويبسايت للجميع (Enable System)"):
-            set_system_lock(False)
-            st.rerun()
-    else:
-        st.success("🟢 النظام حالياً: يعمل بشكل طبيعي (ONLINE).")
-        if st.button("🔴 تفعيل ה-Kill Switch (Shutdown System)"):
-            set_system_lock(True)
-            st.rerun()
-
-    st.write("---")
-    if st.button("⚠️ تصفير جميع البلاغات والإحصائيات نهائياً"):
-        reset_database()
-        st.success("تم تصفير الداتابيز بالكامل!")
+col_header, col_logout = st.columns([5, 1])
+with col_header:
+    st.markdown(f"<div class='sovereign-header'><h3>{user['name']}</h3></div>", unsafe_allow_html=True)
+with col_logout:
+    if st.button("تسجيل الخروج 🚪", use_container_width=True):
+        st.session_state.current_user = None
+        cookie_manager.delete("auth_user", key="delete_user_cookie")
         st.rerun()
+
+# --- Master Control Panel (خصيصاً لـ MASTER OODY) ---
+if user_role == "master":
+    st.markdown("### ⚡ لوحة التحكم المطلقة (Master Control)")
+    c_status, c_switch = st.columns([2, 2])
+    
+    is_locked = check_system_lock()
+    
+    with c_status:
+        if is_locked:
+            st.error("حالة النظام الحالية: النظام متوقف بالكامل 🔴")
+        else:
+            st.success("حالة النظام الحالية: يعمل بالكامل 🟢")
+            
+    with c_switch:
+        if is_locked:
+            if st.button("🔓 إيقاف قفل النظام (تشغيل)", type="primary", use_container_width=True):
+                toggle_system_lock(False)
+                st.rerun()
+        else:
+            if st.button("🚨 (Kill Switch) إيقاف النظام بالكامل", type="primary", use_container_width=True):
+                toggle_system_lock(True)
+                st.rerun()
+
+st.divider()
+st.title("🍔 Bright Vision - نظام الكانتين الذكي")
+
+# 🔴 1. فحص القفل الطارئ المباشر للنظام
+if check_system_lock() and user_role not in ["master"]:
+    st.error("🔒 النظام مغلق حالياً بقرار من إدارة المدرسة.")
+    st.warning("الرجاء التواصل مع الإدارة لإعادة التفعيل.")
+    st.stop()
+
+# 🔴 2. القفل الفوري والمباشر لحسابات الطلاب والزوار خارج المواعيد
+if user_role == "student":
+    is_open, open_msg = check_canteen_working_hours()
+    if not is_open:
+        st.error(f"🔒 {open_msg}")
+        st.info("💡 يمكن للطلاب والزوار تقديم الطلبات فقط خلال مواعيد العمل الرسمية (من 8:00 صباحاً حتى 2:15 ظهراً - من الأحد إلى الخميس).")
+        st.stop()
+
+# ---------------------------------------------------------
+# Main Navigation Tabs Layout
+# ---------------------------------------------------------
+if user_role in ["master", "admin"]:
+    tabs = st.tabs(["تسجيل طلب جديد 🛒", "الأوردرات 👨‍🍳", "إدارة المنتجات ⚙️", "المبيعات والتقارير 📊"])
+    tab_sales, tab_orders, tab_products, tab_reports = tabs[0], tabs[1], tabs[2], tabs[3]
+elif user_role == "canteen":
+    tabs = st.tabs(["الأوردرات 👨‍🍳", "إدارة المنتجات ⚙"])
+    tab_orders, tab_products = tabs[0], tabs[1]
+    tab_sales, tab_reports = None, None
+else:  # Student / Guest
+    tabs = st.tabs(["تسجيل طلب جديد 🛒"])
+    tab_sales = tabs[0]
+    tab_orders, tab_products, tab_reports = None, None, None
+
+# --- TAB: STUDENT NEW ORDER (شاشة الطلب للطلاب) ---
+if tab_sales is not None:
+    with tab_sales:
+        st.subheader("🛒 قائمة الطلبات المتاحة")
+        
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            student_name = st.text_input("اسم الطالب: (مثال: محمود مصطفى)", placeholder="محمود مصطفى", key="std_name_input")
+        with col_s2:
+            student_class = st.text_input("الفصل الدراسي: (مثال: 10-A)", placeholder="10-A", key="std_class_input")
+            
+        prods = get_products()
+        if prods.empty or "stock" not in prods.columns:
+            st.info("لا توجد منتجات مسجلة في المنيو حالياً. يرجى الانتظار حتى يقوم الكانتين بإضافة الاصناف المتاحة.")
+        else:
+            avail_prods = prods[prods["stock"] > 0]
+            if avail_prods.empty:
+                st.info("المنتجات الحالية غير متوفرة بالمخزن حالياً.")
+            else:
+                st.markdown("---")
+                for idx, item in avail_prods.iterrows():
+                    col_i1, col_i2, col_i3 = st.columns([3, 2, 1])
+                    with col_i1:
+                        st.markdown(f"**{item['name']}**")
+                    with col_i2:
+                        st.markdown(f"🏷️ **{item['selling_price']} ج.م**")
+                    with col_i3:
+                        if st.button("إضافة ➕", key=f"add_{item['name']}_{idx}", use_container_width=True):
+                            st.session_state.cart_items.append(item.to_dict())
+                            st.rerun()
+            
+            st.markdown("---")
+            st.subheader("🛒 سلة الطلبات الحالية")
+            
+            if not st.session_state.cart_items:
+                st.info("السلة فارغة حالياً. قم بإضافة أصناف من الأعلى.")
+            else:
+                total_sum = 0.0
+                for item in st.session_state.cart_items:
+                    st.markdown(f"• **{item['name']}** ({item['selling_price']} ج.م)")
+                    total_sum += float(item['selling_price'])
+                
+                st.markdown(f"### **الإجمالي: <span style='color:#00ff66;'>{total_sum:.0f} ج.م</span>**", unsafe_allow_html=True)
+                
+                paid_amount = st.number_input("المبلغ المدفوع (معاك كام؟):", min_value=0.0, step=5.0, value=total_sum)
+                
+                # 📝 إضافة خانة الملاحظات للطلب (Order Notes)
+                order_notes = st.text_area("📝 ملاحظات إضافية على الطلب (اختياري):", placeholder="مثال: من غير كاتشب / العيش محمص / بدون مخلل...", key="std_order_notes")
+
+                col_btn_del1, col_btn_del2 = st.columns(2)
+                with col_btn_del1:
+                    if st.button("حذف ➖ (آخر منتج)", use_container_width=True):
+                        if st.session_state.cart_items:
+                            st.session_state.cart_items.pop()
+                            st.rerun()
+                with col_btn_del2:
+                    if st.button("حذف السلة 🗑️", use_container_width=True):
+                        st.session_state.cart_items = []
+                        st.rerun()
+                
+                if st.button("🚀 اطلب من الكانتين", type="primary", use_container_width=True):
+                    if not student_name or not student_class:
+                        st.error("❌ يرجى كتابة اسم الطالب والفصل الدراسي أولاً!")
+                    elif paid_amount < total_sum:
+                        st.error(f"❌ المبلغ المدفوع ({paid_amount} ج.م) أقل من إجمالي الطلب ({total_sum} ج.م)!")
+                    else:
+                        items_str = ", ".join([f"{i['name']} ({i['selling_price']} ج.م)" for i in st.session_state.cart_items])
+                        sale_record = {
+                            "student_name": student_name,
+                            "student_class": student_class,
+                            "items_str": items_str,
+                            "order_notes": order_notes.strip() if order_notes else "لا يوجد",
+                            "total_price": total_sum,
+                            "paid_amount": paid_amount,
+                            "profit": total_sum * 0.2,
+                            "status": "قيد الانتظار ⏳",
+                            "created_at": datetime.now().strftime("%I:%M %p")
+                        }
+                        
+                        db_insert("sales", sale_record)
+                        st.session_state.demo_sales = pd.concat([st.session_state.demo_sales, pd.DataFrame([sale_record])], ignore_index=True)
+                        
+                        st.session_state.cart_items = []
+                        st.session_state.play_bell = True
+                        st.success("🔔 تم إرسال طلبك للكانتين بنجاح!")
+                        st.rerun()
+
+# --- TAB: KITCHEN / CANTEEN ORDERS (شاشة المطبخ والطلبات) ---
+if tab_orders is not None:
+    with tab_orders:
+        st.subheader("👨‍🍳 شاشة المطبخ والطلبات")
+        sales_df = get_sales()
+        
+        if sales_df.empty:
+            st.info("لا توجد طلبات جديدة حالياً.")
+        else:
+            active_orders = sales_df[sales_df.get("status", "قيد الانتظار ⏳") == "قيد الانتظار ⏳"] if "status" in sales_df.columns else sales_df
+            
+            if active_orders.empty:
+                st.success("✨ جميع الطلبات تم تقديمها بنجاح!")
+            else:
+                for idx, row in active_orders.iterrows():
+                    notes_display = row.get('order_notes', 'لا يوجد')
+                    if not notes_display or str(notes_display).strip() == "":
+                        notes_display = "لا يوجد"
+
+                    st.markdown(f"""
+                    <div class="order-card">
+                        <h3>طلب: {row.get('student_name', 'طالب')} ({row.get('student_class', 'عام')})</h3>
+                        <p><b>الأصناف:</b> {row.get('items_str', 'منتجات متنوعة')}</p>
+                        <p><b>📝 ملاحظات الطلب:</b> <span style="color: #facc15;">{notes_display}</span></p>
+                        <p><b>الحساب:</b> {row.get('total_price', 0)} ج.م | <b>المدفوع:</b> {row.get('paid_amount', 0)} ج.م</p>
+                        <div class="change-box">
+                            🟡 الباقي للطالب: {float(row.get('paid_amount', 0)) - float(row.get('total_price', 0)):.0f} ج.م
+                        </div>
+                        <p>⏰ <b>الوقت:</b> {row.get('created_at', '')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button(f"✅ إتمام تقديم الطلب #{idx+1}", key=f"complete_{idx}", type="primary"):
+                        if "status" in st.session_state.demo_sales.columns:
+                            st.session_state.demo_sales.at[idx, "status"] = "تم التقديم ✅"
+                        st.success("تم إتمام الطلب!")
+                        st.rerun()
+
+# --- TAB 2: PRODUCTS MANAGEMENT ---
+if tab_products is not None:
+    with tab_products:
+        st.subheader("⚙ إضافة منتج جديد للمنيو")
+        with st.form("add_product_form"):
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                prod_name = st.text_input("اسم المنتج:")
+                prod_cat = st.selectbox("القسم:", ["ساندوتشات", "مشروبات", "مخبوزات", "وجبات", "أخرى"])
+            with col_p2:
+                cost_p = st.number_input("سعر التكلفة (ج.م):", min_value=0.0, value=10.0, step=1.0)
+                sell_p = st.number_input("سعر البيع (ج.م):", min_value=0.0, value=15.0, step=1.0)
+                stock_q = st.number_input("الكمية الأولية بالمخزن:", min_value=1, value=20, step=1)
+                
+            if st.form_submit_button("➕ إضافة المنتج", use_container_width=True):
+                if prod_name:
+                    new_item = {
+                        "name": prod_name,
+                        "category": prod_cat,
+                        "cost_price": cost_p,
+                        "selling_price": sell_p,
+                        "stock": stock_q
+                    }
+                    db_insert("products", new_item)
+                    st.session_state.demo_products = pd.concat([st.session_state.demo_products, pd.DataFrame([new_item])], ignore_index=True)
+                    st.success(f"تمت إضافة ({prod_name}) بنجاح إلى المنيو!")
+                    st.rerun()
+
+        st.divider()
+        st.subheader("📋 قائمة المنتجات والمخزون الحالي")
+        st.dataframe(get_products(), use_container_width=True)
+
+# --- TAB 3: REPORTS & ANALYTICS ---
+if tab_reports is not None:
+    with tab_reports:
+        st.subheader("📊 إحصائيات وتقارير المبيعات المحفوظة")
+        
+        if user_role in ["master", "admin"]:
+            with st.expander("⚠️ منطقة التحكم الإداري (إعادة ضبط الإحصائيات)"):
+                st.warning("تنبيه: مسح الإحصائيات سيقوم بتصفير كافة المبيعات والتقارير الحالية!")
+                if st.button("🔄 إعادة ضبط وتصفير جميع الإحصائيات", type="primary", use_container_width=True):
+                    st.session_state.demo_sales = pd.DataFrame(columns=[
+                        "id", "student_name", "student_class", "items_str", "order_notes",
+                        "total_price", "paid_amount", "profit", "status", "created_at"
+                    ])
+                    try:
+                        requests.delete(f"{SUPABASE_URL}/rest/v1/sales?id=gt.0", headers=HEADERS)
+                    except Exception:
+                        pass
+                    st.success("✅ تم إعادة ضبط وتصفير جميع الإحصائيات بنجاح!")
+                    st.rerun()
+            st.markdown("---")
+
+        sales_df = get_sales()
+        
+        if sales_df.empty:
+            st.info("لا توجد مبيعات مسجلة حتى الآن.")
+        else:
+            m1, m2, m3 = st.columns(3)
+            m1.metric("إجمالي المبيعات", f"{sales_df['total_price'].sum():.2f} ج.م")
+            m2.metric("إجمالي الأرباح", f"{sales_df['profit'].sum():.2f} ج.م")
+            m3.metric("عدد العمليات", f"{len(sales_df)}")
+            
+            st.divider()
+            if "product_name" in sales_df.columns:
+                fig = px.bar(sales_df, x="product_name", y="total_price", color="product_name", title="📈 توزيع المبيعات حسب المنتج")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            st.subheader("📜 سجل العمليات التفصيلي")
+            st.dataframe(sales_df, use_container_width=True)
