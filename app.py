@@ -150,7 +150,7 @@ def trigger_notification_bell():
     """
     st.components.v1.html(bell_html, height=0)
 
-# ⏰ دالة فحص المواعيد وأيام عمل الكانتين للطلاب والزوار
+# ⏰ دالة فحص المواعيد وأيام عمل الكانتين (حساب الطالب فقط)
 def check_canteen_working_hours():
     now = datetime.now()
     
@@ -164,7 +164,7 @@ def check_canteen_working_hours():
     current_time = now.time()
     
     if not (start_time <= current_time <= end_time):
-        return False, f"الكانتين مغلق حالياً 🔴\nالوقت الحالي: {now.strftime('%I:%M %p')}\nمواعيد الطلب الرسمية للطلاب والزوار من 8:00 صباحاً حتى 2:15 ظهراً."
+        return False, f"الكانتين مغلق حالياً 🔴\nالوقت الحالي: {now.strftime('%I:%M %p')}\nمواعيد الطلب الرسمية للطلاب من 8:00 صباحاً حتى 2:15 ظهراً."
         
     return True, "الكانتين مفتوح للطلب 🟢"
 
@@ -205,9 +205,8 @@ def db_update(table, match_col, match_val, data):
         return False
 
 # ---------------------------------------------------------
-# Session Memory Initialization
+# Session Memory Initialization (تصفير كامل)
 # ---------------------------------------------------------
-# 💥 تم تفريغ المنيو الافتراضي بالكامل
 if "demo_products" not in st.session_state:
     st.session_state.demo_products = pd.DataFrame(columns=[
         "id", "name", "category", "cost_price", "selling_price", "stock"
@@ -228,31 +227,6 @@ if "system_locked" not in st.session_state:
 if "play_bell" not in st.session_state:
     st.session_state.play_bell = False
 
-# Helper Functions
-def get_products():
-    df = db_get("products")
-    if not df.empty and "stock" in df.columns:
-        return df
-    return st.session_state.demo_products
-
-def get_sales():
-    df = db_get("sales")
-    if not df.empty and "total_price" in df.columns:
-        return df
-    return st.session_state.demo_sales
-
-def check_system_lock():
-    df = db_get("system_config")
-    if not df.empty and "key" in df.columns and "value" in df.columns:
-        row = df[df["key"] == "is_locked"]
-        if not row.empty:
-            return str(row.iloc[0]["value"]).lower() == "true"
-    return st.session_state.system_locked
-
-def toggle_system_lock(locked_state: bool):
-    st.session_state.system_locked = locked_state
-    db_update("system_config", "key", "is_locked", {"value": "true" if locked_state else "false"})
-
 # ---------------------------------------------------------
 # User Accounts Definition
 # ---------------------------------------------------------
@@ -260,11 +234,11 @@ ACCOUNTS = {
     "oody": {"pass": "Mahmoud@2011", "role": "master", "name": "الملك الأعلى للنظام | MASTER OODY مرحباً بك يا 👑"},
     "admin": {"pass": "Dr.RagabBV842", "role": "admin", "name": "مدير النظام | Dr. Ragab"},
     "canteen": {"pass": "canteen 842", "role": "canteen", "name": "حساب الكانتين والمطبخ 🍔"},
-    "student": {"pass": "student123", "role": "student", "name": "حساب الطلاب والزوار 🎓"}
+    "student": {"pass": "student123", "role": "student", "name": "حساب الطلاب الرسمي 🎓"}
 }
 
 GUEST_DEMO_ACCOUNT = {
-    "role": "student",
+    "role": "guest",
     "name": "زائر الديمو التجريبي 🎓"
 }
 
@@ -278,6 +252,44 @@ if "current_user" not in st.session_state:
         st.session_state.current_user = GUEST_DEMO_ACCOUNT
     else:
         st.session_state.current_user = None
+
+user = st.session_state.current_user
+user_role = user["role"] if user else None
+
+# Helper Functions (فصل الديمو عن الداتابيز الحقيقية)
+def get_products():
+    if user_role == "guest":
+        return st.session_state.demo_products
+    df = db_get("products")
+    if not df.empty and "stock" in df.columns:
+        return df
+    return pd.DataFrame(columns=["id", "name", "category", "cost_price", "selling_price", "stock"])
+
+def get_sales():
+    if user_role == "guest":
+        return st.session_state.demo_sales
+    df = db_get("sales")
+    if not df.empty and "total_price" in df.columns:
+        return df
+    return pd.DataFrame(columns=[
+        "id", "student_name", "student_class", "items_str", "order_notes",
+        "total_price", "paid_amount", "profit", "status", "created_at"
+    ])
+
+def check_system_lock():
+    if user_role == "guest":
+        return False
+    df = db_get("system_config")
+    if not df.empty and "key" in df.columns and "value" in df.columns:
+        row = df[df["key"] == "is_locked"]
+        if not row.empty:
+            return str(row.iloc[0]["value"]).lower() == "true"
+    return st.session_state.system_locked
+
+def toggle_system_lock(locked_state: bool):
+    st.session_state.system_locked = locked_state
+    if user_role != "guest":
+        db_update("system_config", "key", "is_locked", {"value": "true" if locked_state else "false"})
 
 if st.session_state.play_bell:
     trigger_notification_bell()
@@ -318,9 +330,6 @@ if st.session_state.current_user is None:
 # ---------------------------------------------------------
 # Header & Master Dashboard Info
 # ---------------------------------------------------------
-user = st.session_state.current_user
-user_role = user["role"]
-
 col_header, col_logout = st.columns([5, 1])
 with col_header:
     st.markdown(f"<div class='sovereign-header'><h3>{user['name']}</h3></div>", unsafe_allow_html=True)
@@ -330,7 +339,7 @@ with col_logout:
         cookie_manager.delete("auth_user", key="delete_user_cookie")
         st.rerun()
 
-# --- Master Control Panel (خصيصاً لـ MASTER OODY) ---
+# --- Master Control Panel (MASTER OODY) ---
 if user_role == "master":
     st.markdown("### ⚡ لوحة التحكم المطلقة (Master Control)")
     c_status, c_switch = st.columns([2, 2])
@@ -356,18 +365,18 @@ if user_role == "master":
 st.divider()
 st.title("🍔 Bright Vision - نظام الكانتين الذكي")
 
-# 🔴 1. فحص القفل الطارئ المباشر للنظام
-if check_system_lock() and user_role not in ["master"]:
+# 🔴 1. فحص القفل الطارئ المباشر للنظام (يستثنى منه الماستر والديمو)
+if check_system_lock() and user_role not in ["master", "guest"]:
     st.error("🔒 النظام مغلق حالياً بقرار من إدارة المدرسة.")
     st.warning("الرجاء التواصل مع الإدارة لإعادة التفعيل.")
     st.stop()
 
-# 🔴 2. القفل الفوري والمباشر لحسابات الطلاب والزوار خارج المواعيد
+# 🔴 2. القفل الفوري والمباشر لحساب الطالب الرسمي فقط خارج المواعيد (حساب الديمو غير مقيد)
 if user_role == "student":
     is_open, open_msg = check_canteen_working_hours()
     if not is_open:
         st.error(f"🔒 {open_msg}")
-        st.info("💡 يمكن للطلاب والزوار تقديم الطلبات فقط خلال مواعيد العمل الرسمية (من 8:00 صباحاً حتى 2:15 ظهراً - من الأحد إلى الخميس).")
+        st.info("💡 يمكن للطلاب تقديم الطلبات فقط خلال مواعيد العمل الرسمية (من 8:00 صباحاً حتى 2:15 ظهراً - من الأحد إلى الخميس).")
         st.stop()
 
 # ---------------------------------------------------------
@@ -380,12 +389,16 @@ elif user_role == "canteen":
     tabs = st.tabs(["الأوردرات 👨‍🍳", "إدارة المنتجات ⚙"])
     tab_orders, tab_products = tabs[0], tabs[1]
     tab_sales, tab_reports = None, None
-else:  # Student / Guest
+elif user_role == "guest":
+    tabs = st.tabs(["تسجيل طلب جديد 🛒 (تجريبي)", "الأوردرات 👨‍🍳 (تجريبي)", "إدارة المنتجات ⚙️ (تجريبي)"])
+    tab_sales, tab_orders, tab_products = tabs[0], tabs[1], tabs[2]
+    tab_reports = None
+else:  # Student
     tabs = st.tabs(["تسجيل طلب جديد 🛒"])
     tab_sales = tabs[0]
     tab_orders, tab_products, tab_reports = None, None, None
 
-# --- TAB: STUDENT NEW ORDER (شاشة الطلب للطلاب) ---
+# --- TAB: NEW ORDER (شاشة الطلب للطلاب والديمو) ---
 if tab_sales is not None:
     with tab_sales:
         st.subheader("🛒 قائمة الطلبات المتاحة")
@@ -397,8 +410,8 @@ if tab_sales is not None:
             student_class = st.text_input("الفصل الدراسي: (مثال: 10-A)", placeholder="10-A", key="std_class_input")
             
         prods = get_products()
-        if prods.empty or "stock" not in prods.columns:
-            st.info("لا توجد منتجات مسجلة في المنيو حالياً. يرجى الانتظار حتى يقوم الكانتين بإضافة الاصناف المتاحة.")
+        if prods.empty or "stock" not in prods.columns or len(prods) == 0:
+            st.info("لا توجد منتجات مسجلة في المنيو حالياً. القائمة فارغة حتى يقوم الكانتين بإضافة الأصناف المتاحة.")
         else:
             avail_prods = prods[prods["stock"] > 0]
             if avail_prods.empty:
@@ -430,8 +443,6 @@ if tab_sales is not None:
                 st.markdown(f"### **الإجمالي: <span style='color:#00ff66;'>{total_sum:.0f} ج.م</span>**", unsafe_allow_html=True)
                 
                 paid_amount = st.number_input("المبلغ المدفوع (معاك كام؟):", min_value=0.0, step=5.0, value=total_sum)
-                
-                # 📝 إضافة خانة الملاحظات للطلب (Order Notes)
                 order_notes = st.text_area("📝 ملاحظات إضافية على الطلب (اختياري):", placeholder="مثال: من غير كاتشب / العيش محمص / بدون مخلل...", key="std_order_notes")
 
                 col_btn_del1, col_btn_del2 = st.columns(2)
@@ -464,12 +475,14 @@ if tab_sales is not None:
                             "created_at": datetime.now().strftime("%I:%M %p")
                         }
                         
-                        db_insert("sales", sale_record)
-                        st.session_state.demo_sales = pd.concat([st.session_state.demo_sales, pd.DataFrame([sale_record])], ignore_index=True)
+                        if user_role == "guest":
+                            st.session_state.demo_sales = pd.concat([st.session_state.demo_sales, pd.DataFrame([sale_record])], ignore_index=True)
+                        else:
+                            db_insert("sales", sale_record)
                         
                         st.session_state.cart_items = []
                         st.session_state.play_bell = True
-                        st.success("🔔 تم إرسال طلبك للكانتين بنجاح!")
+                        st.success("🔔 تم إرسال طلبك بنجاح!")
                         st.rerun()
 
 # --- TAB: KITCHEN / CANTEEN ORDERS (شاشة المطبخ والطلبات) ---
@@ -505,12 +518,14 @@ if tab_orders is not None:
                     """, unsafe_allow_html=True)
                     
                     if st.button(f"✅ إتمام تقديم الطلب #{idx+1}", key=f"complete_{idx}", type="primary"):
-                        if "status" in st.session_state.demo_sales.columns:
+                        if user_role == "guest":
                             st.session_state.demo_sales.at[idx, "status"] = "تم التقديم ✅"
+                        else:
+                            db_update("sales", "id", row.get("id"), {"status": "تم التقديم ✅"})
                         st.success("تم إتمام الطلب!")
                         st.rerun()
 
-# --- TAB 2: PRODUCTS MANAGEMENT ---
+# --- TAB: PRODUCTS MANAGEMENT ---
 if tab_products is not None:
     with tab_products:
         st.subheader("⚙ إضافة منتج جديد للمنيو")
@@ -533,8 +548,10 @@ if tab_products is not None:
                         "selling_price": sell_p,
                         "stock": stock_q
                     }
-                    db_insert("products", new_item)
-                    st.session_state.demo_products = pd.concat([st.session_state.demo_products, pd.DataFrame([new_item])], ignore_index=True)
+                    if user_role == "guest":
+                        st.session_state.demo_products = pd.concat([st.session_state.demo_products, pd.DataFrame([new_item])], ignore_index=True)
+                    else:
+                        db_insert("products", new_item)
                     st.success(f"تمت إضافة ({prod_name}) بنجاح إلى المنيو!")
                     st.rerun()
 
@@ -542,7 +559,7 @@ if tab_products is not None:
         st.subheader("📋 قائمة المنتجات والمخزون الحالي")
         st.dataframe(get_products(), use_container_width=True)
 
-# --- TAB 3: REPORTS & ANALYTICS ---
+# --- TAB: REPORTS & ANALYTICS ---
 if tab_reports is not None:
     with tab_reports:
         st.subheader("📊 إحصائيات وتقارير المبيعات المحفوظة")
@@ -551,14 +568,16 @@ if tab_reports is not None:
             with st.expander("⚠️ منطقة التحكم الإداري (إعادة ضبط الإحصائيات)"):
                 st.warning("تنبيه: مسح الإحصائيات سيقوم بتصفير كافة المبيعات والتقارير الحالية!")
                 if st.button("🔄 إعادة ضبط وتصفير جميع الإحصائيات", type="primary", use_container_width=True):
-                    st.session_state.demo_sales = pd.DataFrame(columns=[
-                        "id", "student_name", "student_class", "items_str", "order_notes",
-                        "total_price", "paid_amount", "profit", "status", "created_at"
-                    ])
-                    try:
-                        requests.delete(f"{SUPABASE_URL}/rest/v1/sales?id=gt.0", headers=HEADERS)
-                    except Exception:
-                        pass
+                    if user_role == "guest":
+                        st.session_state.demo_sales = pd.DataFrame(columns=[
+                            "id", "student_name", "student_class", "items_str", "order_notes",
+                            "total_price", "paid_amount", "profit", "status", "created_at"
+                        ])
+                    else:
+                        try:
+                            requests.delete(f"{SUPABASE_URL}/rest/v1/sales?id=gt.0", headers=HEADERS)
+                        except Exception:
+                            pass
                     st.success("✅ تم إعادة ضبط وتصفير جميع الإحصائيات بنجاح!")
                     st.rerun()
             st.markdown("---")
